@@ -1,0 +1,173 @@
+﻿# Fallback message strings in en-US
+DATA localizedData
+{
+# same as culture = "en-US"
+ConvertFrom-StringData @'    
+    GetDiskImage=Getting Disk Image Instance at path {0}.
+    DiskImageMounted=Disk image at the path {0} is mounted.
+    DiskImageNotMounted=Disk image at the path {0} is not mounted.
+    MountingDiskImage=Mounting disk image at path {0}.
+    MountedDiskImage=Disk image at path {0} is mounted.
+    SetDriveLetetr=Setting Drive letter of the mounted image to {0}.
+    DriverLetterSet=Drive letter of the mounted image set to {0}.
+    DisMountingDiskImage=Dismounting disk image at path {0}.
+    DismountedDiskImage=Disk image at path {0} is dismounted.
+    MountExistsWithDriveLetter=Disk image mount exists with same drive letter as requested.
+    MountExistsWithDifferentDriveLetter=Disk image mount exists with different drive letter than requested.
+    MountExistsNoAction=Disk image mount for {0} already exists. No action needed.
+    MountDoesNotExistShouldCreate=Disk image mount for {0} does not exist. It will be mounted.
+    MountExistsShouldRemove=Disk image mount for {0} exists. It will be dismounted.
+    MountDoesNotExistNoAction=Disk image mount for {0} does not exist. No action needed.
+'@
+}
+
+if (Test-Path $PSScriptRoot\en-us)
+{
+    Import-LocalizedData LocalizedData -filename DiskImage.psd1
+}
+
+Function Get-TargetResource {
+    [OutputType([Hashtable])]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateScript(
+            {
+                $extension = [System.IO.Path]::GetExtension($_)
+                if (($extension -eq '.iso' -or $extension -eq '.vhd' -or $extension -eq '.vhdx') -and (Test-Path $_)) {
+                    $true
+                } else {
+                    $false
+                }
+            }
+        )]
+        [string] $ImagePath,
+
+        [Parameter(Mandatory)]
+        [string] $DriveLtter,
+
+        [Parameter()]
+        [ValidateSet('Present','Absent')]
+        [string] $Ensure = 'Present'
+    )
+
+    $Configuration = @{
+        ImagePath = $ImagePath
+        DriveLetter = $DriveLtter
+    }
+
+    Write-Verbose ($localizedData.GetDiskImage -f $ImagePath)
+    $DiskImage = Get-DiskImage -ImagePath $ImagePath
+    if ($DiskImage.Attached) {
+        if (($DiskImage | Get-Volume).DriveLetter -eq $DriveLtter) {
+            Write-Verbose ($localizedData.DiskImageMounted -f $ImagePath)
+            $Configuration.Add('Ensure','Present')
+        } else {
+            Write-Verbose ($localizedData.DiskImageNotMounted -f $ImagePath)
+            $Configuration.Add('Ensure','Absent')
+        }
+    }
+
+    $Configuration
+}
+
+
+Function Set-TargetResource {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateScript(
+            {
+                $extension = [System.IO.Path]::GetExtension($_)
+                if (($extension -eq '.iso' -or $extension -eq '.vhd' -or $extension -eq '.vhdx') -and (Test-Path $_)) {
+                    $true
+                } else {
+                    $false
+                }
+            }
+        )]
+        [string] $ImagePath,
+
+        [Parameter(Mandatory)]
+        [string] $DriveLtter,
+
+        [Parameter()]
+        [ValidateSet('Present','Absent')]
+        [string] $Ensure = 'Present'
+    )
+
+    $DriveLetter = $DriveLtter + ':'
+
+    if ($Ensure -eq 'Present') {
+        Write-Verbose ($localizedData.MountingDiskImage -f $ImagePath)
+        $DiskImage = Mount-DiskImage -ImagePath $ImagePath -NoDriveLetter -PassThru | Get-Volume
+        Write-Verbose ($localizedData.MountedDiskImage -f $ImagePath)
+        $DiskVolume = Get-CimInstance -ClassName Win32_Volume | Where-Object { $_.DeviceID -eq $DiskImage.ObjectId }
+
+        Write-Verbose ($localizedData.SetDriveLetetr -f $DriveLtter)
+        Set-CimInstance -Property @{DriveLetter= $DriveLetter } -InputObject $DiskVolume
+        Write-Verbose ($localizedData.DriverLetterSet -f $DriveLtter)
+    } else {
+        Write-Verbose ($localizedData.DisMountingDiskImage -f $DiskImage)
+        Dismount-DiskImage -ImagePath $ImagePath
+        Write-Verbose ($localizedData.DismountedDiskImage -f $DiskImage)
+    }
+}
+
+Function Test-TargetResource {
+    [CmdletBinding()]
+    [OutputType([Boolean])]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateScript(
+            {
+                $extension = [System.IO.Path]::GetExtension($_)
+                if (($extension -eq '.iso' -or $extension -eq '.vhd' -or $extension -eq '.vhdx') -and (Test-Path $_)) {
+                    $true
+                } else {
+                    $false
+                }
+            }
+        )]
+        [string] $ImagePath,
+
+        [Parameter(Mandatory)]
+        [ValidateScript({-not (Test-Path $_)})]
+        [string] $DriveLtter,
+
+        [Parameter()]
+        [ValidateSet('Present','Absent')]
+        [string] $Ensure = 'Present'
+    )
+
+    Write-Verbose ($localizedData.GetDiskImage -f $ImagePath)
+    $DiskImage = Get-DiskImage -ImagePath $ImagePath
+    if ($DiskImage.Attached) {
+        if (($DiskImage | Get-Volume).DriveLetter -eq $DriveLtter) {
+            Write-Verbose ($localizedData.MountExistsWithDriveLetter)
+            $MountExists = $true
+        } else {
+            Write-Verbose ($localizedData.MountExistsWithDifferentDriveLetter)
+            $MountExists = $false
+        }
+    }
+    
+    if ($MountExists) {
+        if ($Ensure -eq 'Present') {
+            Write-Verbose ($localizedData.MountExistsNoAction -f $ImagePath)
+            $true
+        } else {
+            Write-Verbose ($localizedData.MountDoesNotExistShouldCreate -f $ImagePath)
+            $false
+        }
+    } else {
+        if ($Ensure -eq 'Absent') {
+            Write-Verbose ($localizedData.MountExistsShouldRemove -f $ImagePath)
+            $true
+        } else {
+            Write-Verbose ($localizedData.MountDoesNotExistNoAction -f $ImagePath)
+            $false
+        }
+    }
+}
+
+Export-ModuleMember -Function *-TargetResource
