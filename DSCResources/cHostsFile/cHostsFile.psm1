@@ -19,7 +19,7 @@ ConvertFrom-StringData @'
 
 if (Test-Path $PSScriptRoot\en-us)
 {
-    Import-LocalizedData LocalizedData -filename HostsFile.psd1
+    Import-LocalizedData LocalizedData -filename cHostsFile.psd1
 }
 
 function Get-TargetResource
