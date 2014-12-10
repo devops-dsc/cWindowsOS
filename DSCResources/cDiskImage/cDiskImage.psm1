@@ -23,7 +23,7 @@ ConvertFrom-StringData @'
 
 if (Test-Path $PSScriptRoot\en-us)
 {
-    Import-LocalizedData LocalizedData -filename DiskImage.psd1
+    Import-LocalizedData LocalizedData -filename cDiskImage.psd1
 }
 
 Function Get-TargetResource {
